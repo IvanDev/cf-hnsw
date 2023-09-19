@@ -1,0 +1,20 @@
+{
+  "name": "cf-hnsw",
+  "version": "0.0.0",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20230904.0",
+    "typescript": "^5.2.2",
+    "wrangler": "2.15.0"
+  },
+  "private": true,
+  "scripts": {
+    "start": "wrangler dev",
+    "deploy": "wrangler publish",
+    "dev": "wrangler dev --persist --local"
+  },
+  "dependencies": {
+    "@cloudflare/itty-router-openapi": "^1.0.0",
+    "itty-durable": "^2.1.0",
+    "zod": "^3.22.2"
+  }
+}

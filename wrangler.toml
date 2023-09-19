@@ -1,0 +1,11 @@
+name = "cf-hnsw"
+main = "src/index.ts"
+compatibility_date = "2023-09-06"
+
+durable_objects.bindings = [
+  { name = "VECTOR_STORE", class_name = "VectorStoreDurableObject"}
+]
+
+[[migrations]]
+tag = "v1" # Should be unique for each entry
+new_classes = ["VectorStoreDurableObject"]
