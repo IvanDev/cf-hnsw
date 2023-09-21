@@ -54,6 +54,7 @@ import {
           "Content-Type": "application/json",
         },
       });
+
       return await resp.json<z.infer<typeof QueryItemsResponse>>();
     }
   }

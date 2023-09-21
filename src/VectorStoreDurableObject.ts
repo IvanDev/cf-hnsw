@@ -1,6 +1,3 @@
-import { OpenAPIRouter, OpenAPIRouterType } from "@cloudflare/itty-router-openapi"
-import { AddItemsRequest } from "./routes/add"
-import { z } from "zod"
 import { RequestLike, error } from "itty-router"
 import {
     json,
@@ -13,34 +10,47 @@ import {
 import {HNSW, HNSWConfig, Node} from "./hnsw"
 import {Storage} from "./storage";
 import {DOStorage} from "./storage/durableObjectStorage";
-import {QueryItemRequest} from "./routes/query";
 
 export type VectorStoreDurableObjectBindings = {
     ENVIRONMENT: string
 }
 
-// export const HNSWConfig = z.object({
-//     M: z.number().optional(),
-//     Mmax: z.number().optional(),
-//     Mmax0: z.number().optional(),
-//     efConstruction: z.number().optional(),
-//
-//     dimensions: z.number().optional(),
-//     entryPointId: z.number().optional(),
-// });
-//
-// export type HNSWConfigType = z.infer<typeof HNSWConfig>;
 const Defaults: { config: HNSWConfig, queryK: number } = {
     config: {
         M: 16,
         Mmax: 16,
-        Mmax0: 20,
+        Mmax0: 32,
         efConstruction: 200,
         efSearch: 200,
         entryPointId: [],
         randomSeed: 0,
     },
     queryK: 5,
+}
+
+export type ItemType = {
+    vector: Float32Array | number[],
+    data?: Record<string, any> | undefined,
+}
+
+export type AddItemsRequest = {
+    items: ItemType[],
+}
+
+export type ResultItem = {
+    id: number,
+    item: ItemType,
+    distance: number,
+}
+
+export type QueryItemsRequest = {
+    k?: number,
+    threshold?: number,
+    vector: Float32Array | number[],
+}
+
+export type QueryItemsResponse = {
+    items: ResultItem[],
 }
 
 export class VectorStoreDurableObject implements DurableObject {
@@ -70,7 +80,7 @@ export class VectorStoreDurableObject implements DurableObject {
         });
 
         this.router.post('/add', withContent, async (request) => {
-            const params: z.infer<typeof AddItemsRequest> = request.content;
+            const params: AddItemsRequest = request.content;
 
             if (params.items.length === 0) {
                 return new Response(JSON.stringify({}), { status: 200 })
@@ -87,18 +97,18 @@ export class VectorStoreDurableObject implements DurableObject {
             }
 
             var result: Node[] = [];
-            for (var i=0; i < this.autoincrement; i++) {
-                const node = await this.hnsw.nodes.get(i);
-                if (node) {
-                    result.push(node);
-                }
-            }
+            // for (var i=0; i < this.autoincrement; i++) {
+            //     const node = await this.hnsw.nodes.get(i);
+            //     if (node) {
+            //         result.push(node);
+            //     }
+            // }
 
             return new Response(JSON.stringify(result), { status: 200 })
         });
 
         this.router.post('/query', withContent, async (request) => {
-            const params: z.infer<typeof QueryItemRequest> = request.content;
+            const params: QueryItemsRequest = request.content;
 
             const vector = new Float32Array(params.vector);
             
@@ -111,13 +121,22 @@ export class VectorStoreDurableObject implements DurableObject {
                 throw new StatusError(400, 'Vector dimensions does not match index dimension');
             }
             //TODO: Add (in memory?) cache for entire query
-            throw  new StatusError(400, 'Not implemented');
-            // const result = await this.hnsw.searchKNN(vector, params.k || Defaults.queryK);
-            //
-            // return new Response(JSON.stringify(result), { status: 200 })
+            const result = await this.hnsw.search(vector, params.k || Defaults.queryK);
+            const items: ResultItem[] = result.map((item) => {
+                return {
+                    id: item.node.id,
+                    item: {
+                        vector: [],//item.node.vector,
+                        data: undefined
+                    },
+                    distance: item.distance,
+                }
+            });
+            const response: QueryItemsResponse = {
+                items: items,
+            }
+            return new Response(JSON.stringify(response), { status: 200 })
         });
-
-        
     }
 
     async getAutoincrement() {

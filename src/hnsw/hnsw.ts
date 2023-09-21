@@ -2,8 +2,9 @@ import { NodeCache } from "./nodeCache";
 import {DistanceFunctionType, HNSWConfig} from "./types";
 import {Node} from "./node";
 import {Storage} from "./storage";
-import {CandidateNodeList} from "./candidateList";
-import {innerProductDistanceFunction} from "./distanceFunction";
+import {CandidateItem, CandidateNodeList} from "./candidateList";
+import {innerProduct, innerProductDistanceFunction} from "./distanceFunction";
+import {number} from "zod";
 
 type HNSWState = {
     maxLevel: number | undefined;
@@ -26,10 +27,8 @@ export class HNSW {
 
         this.config.efConstruction = Math.max(this.config.efConstruction, this.config.M);
 
-        this.levelMult = 1 / Math.log(1.0 * this.config.M);
+        this.levelMult = 1.0 / Math.log(1.0 * this.config.M);
         this.getDistance = innerProductDistanceFunction;
-        // add Mmax and Mmax0
-
     }
 
     async addItem(id: number, vector: Float32Array) {
@@ -42,30 +41,38 @@ export class HNSW {
         }
         this.state.dimensions = vector.length;
 
-        const newNode = new Node(id, vector, this.getRandomLevel());
-        if (this.state.maxLevel == undefined || (this.state.maxLevel < newNode.level)) {
-            await this.setState({...this.state!, ...{ maxLevel: Math.max(this.state.maxLevel || 0, newNode.level) }});
-        }
+        let newLevel = this.getRandomLevel();
+        // newLevel = 1;
+        const newNode = new Node(id, vector, newLevel);
 
         if (this.state.entrypointId !== undefined) {
-            let level = this.state.maxLevel!;
             let closestNode = (await this.nodes.get(this.state.entrypointId))!;
-            let closestDistance = this.getDistance(newNode.vector, undefined, closestNode.vector, undefined);;
+            let level = closestNode.level;
+            let closestDistance = Number.MAX_SAFE_INTEGER;
 
             do  {
-                await this.traverseNodes(closestNode, this.config.efConstruction!, level, (node) => {
-                    const dist = this.getDistance(newNode.vector, undefined, node.vector, undefined);
-                    if (dist < closestDistance) {
-                        closestNode = node;
-                        closestDistance = dist;
+                while(true) {
+                    let didMove = false;
+                    await this.traverseNodes(closestNode, this.config.efConstruction, level, (node) => {
+                        const dist = this.getDistance(newNode.vector, newNode.norm, node.vector, node.norm);
+                        if (dist < closestDistance) {
+                            closestNode = node;
+                            closestDistance = dist;
+                            didMove = true;
+                            return true;
+                        }
+                        return false;
+
+                    });
+                    if (!didMove) {
+                        break;
                     }
-                    return true;
-                });
+                }
                 level--;
             } while (level > newNode.level);
 
             let affectedNodes = new Set<Node>();
-            for (let l = level + 1; l >= 0 ; l--) {
+            for (let l = newNode.level; l >= 0 ; l--) {
                 const levelM = l == 0 ? this.config.Mmax0 : this.config.Mmax;
                 let candidates = new CandidateNodeList(newNode, this.getDistance, levelM);
                 await this.traverseNodes(closestNode, this.config.efConstruction!, l, (node) => {
@@ -87,66 +94,103 @@ export class HNSW {
                         newNode.neighbors[l].pop();
                     }
                 }
+                if (candidates.items.length) {
+                    closestNode = candidates.items[0].node;
+                }
             }
             let affectedNodesList = Array.from(affectedNodes);
             for (let i = 0; i < affectedNodesList.length; i++) {
                 await this.nodes.set(affectedNodesList[i]);
             }
-        } else {
-            this.state.entrypointId = newNode.id;
-            await this.setState({...this.state!, ...{ entrypointId: this.state.entrypointId }});
         }
+
+        if (this.state.entrypointId === undefined || (this.state.maxLevel == undefined || (this.state.maxLevel < newNode.level))) {
+            await this.setState({...this.state!, ...{
+                    maxLevel: Math.max(this.state.maxLevel || 0, newNode.level),
+                    entrypointId: newNode.id }
+                });
+        }
+
         await this.nodes.set(newNode);
     }
 
     private async traverseNodes(entryNode: Node, ef: number, level: number, onNode: (node:Node)=>Boolean, visited?:Set<number> ): Promise<Node[]> {
-        if (!visited)
+        if (!visited) {
             visited = new Set<number>();
-        if (entryNode.neighbors.length <= level || visited.size > ef) {
+        }
+
+        if (entryNode.level < level || visited.size > ef) {
             return [];
         }
         let result = new Array<Node>();
         if (!visited.has(entryNode.id)) {
+            visited.add(entryNode.id);
             if (onNode(entryNode)) {
                 result.push(entryNode);
             }
-            visited.add(entryNode.id);
         }
         for (let i = 0; i<entryNode.neighbors[level].length; i++) {
             const neighborId = entryNode.neighbors[level][i];
             if (!visited.has(neighborId)) {
                 const neighbor = (await this.nodes.get(neighborId))!;
+                visited.add(neighborId);
                 if (onNode(neighbor)) {
                     result.push(neighbor);
-                    visited.add(neighborId);
+                    result = result.concat(await this.traverseNodes(neighbor, ef, level, onNode, visited));
                 }
-                result = result.concat(await this.traverseNodes(neighbor, ef, level, onNode, visited));
+            }
+            if (visited.size > ef) {
+                break;
             }
         }
         return result;
     }
 
-    // private async searchNodes(query: VectorType, k: number, stopAtLevel: number = 0): Promise<Node | undefined> {
-    //     if (this.state === undefined) {
-    //         await this.loadState();
-    //     }
-    //     if (this.state.entrypointId === undefined) {
-    //         return undefined;
-    //     } else {
-    //
-    //     }
-    // }
-    //
-    // async search(query: VectorType, k: number): Promise<Node | undefined> {
-    //     if (this.state === undefined) {
-    //         await this.loadState();
-    //     }
-    //     if (this.state.dimensions !== undefined && query.length !== this.state.dimensions) {
-    //         throw new Error('All vectors must be of the same dimension');
-    //     }
-    //     return this.searchNode(query);
-    // }
+    async search(query: Float32Array, k: number): Promise<CandidateItem[]> {
+        if (this.state === undefined) {
+            await this.loadState();
+        }
+        if (this.state.dimensions === undefined) {
+            throw new Error('Dimensions not set');
+        }
+        if (this.state.dimensions !== undefined && query.length !== this.state.dimensions) {
+            throw new Error('All vectors must be of the same dimension');
+        }
+        if (this.state.entrypointId !== undefined) {
+            let closestNode = (await this.nodes.get(this.state.entrypointId))!;
+            let level = closestNode.level;
+            let closestDistance = Number.MAX_SAFE_INTEGER;
+            let queryNorm = innerProduct(query, query);
+            do {
+                while (true) {
+                    let didMove = false;
+                    await this.traverseNodes(closestNode, this.config.efSearch, level, (node) => {
+                        const dist = this.getDistance(query, queryNorm, node.vector, node.norm);
+                        if (dist < closestDistance) {
+                            closestNode = node;
+                            closestDistance = dist;
+                            didMove = true;
+                            return true;
+                        }
+                        return false;
+                    });
+                    if (!didMove) {
+                        break;
+                    }
+                }
+                level--;
+            } while (level >= 0);
 
+            let candidates = new CandidateNodeList(closestNode, this.getDistance, k);
+            await this.traverseNodes(closestNode, this.config.efSearch!, 0, (node) => {
+                candidates.add(node);
+                return true;
+            });
+            return candidates.items;
+        } else {
+            return [];
+        }
+    }
 
     getRandomLevel(): number {
         const r = -1.0 * Math.log(this.getRandomNumber()) * this.levelMult;

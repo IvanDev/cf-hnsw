@@ -13,9 +13,10 @@ export const Item = {
     data: AnyObject.optional(),
 }
 
-export const ResultItem = {
+export const ResultItem = z.object({
     id: z.number(),
     item: z.object(Item),
     distance: z.number(),
-}
+});
 
+export type ResultItemType = z.infer<typeof ResultItem>;

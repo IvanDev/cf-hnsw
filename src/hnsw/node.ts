@@ -1,5 +1,3 @@
-import { VectorType } from "./types";
-
 export class Node {
     id: number;
     vector: Float32Array;
@@ -11,7 +9,7 @@ export class Node {
         this.id = id;
         this.vector = vector;
         this.level = level;
-        this.neighbors = neighbors ? neighbors : new Array(level + 1).fill(new Array(0));
+        this.neighbors = neighbors ? neighbors : (new Array(level + 1)).fill(0).map(() => []);
     }
 
     static fromJSON(json: any): Node {
