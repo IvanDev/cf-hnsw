@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230904.0",
+    "@vitest/coverage-v8": "^0.34.5",
     "typescript": "^5.2.2",
     "vitest": "^0.34.5",
     "wrangler": "2.15.0"
@@ -16,7 +17,6 @@
   },
   "dependencies": {
     "@cloudflare/itty-router-openapi": "^1.0.0",
-    "itty-durable": "^2.1.0",
     "zod": "^3.22.2"
   }
 }

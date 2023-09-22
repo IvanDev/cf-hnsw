@@ -1,9 +1,9 @@
 import { NodeCache } from "./nodeCache";
-import {DistanceFunctionType, HNSWConfig} from "./types";
+import {ScoreFunctionType, HNSWConfig} from "./types";
 import {Node} from "./node";
 import {Storage} from "./storage";
 import {CandidateItem, CandidateNodeList} from "./candidateList";
-import {innerProduct, innerProductDistanceFunction} from "./distanceFunction";
+import { dotProduct } from "./utils";
 import {number} from "zod";
 
 type HNSWState = {
@@ -18,7 +18,7 @@ export class HNSW {
     private levelMult: number;
     private storage: Storage;
     private state!: HNSWState;
-    private getDistance!: DistanceFunctionType;
+    private getScore!: ScoreFunctionType;
     constructor(config: HNSWConfig, storage:Storage) {
         this.config = config;
         this.storage = storage;
@@ -28,7 +28,9 @@ export class HNSW {
         this.config.efConstruction = Math.max(this.config.efConstruction, this.config.M);
 
         this.levelMult = 1.0 / Math.log(1.0 * this.config.M);
-        this.getDistance = innerProductDistanceFunction;
+        this.getScore = (a: Float32Array, normA: number | undefined, b: Float32Array, normB: number | undefined) => {
+            return 1.0 / ( dotProduct(a, b) / ( (normA || Math.sqrt(dotProduct(a, a))) * (normB || Math.sqrt(dotProduct(b, b))) ) );
+        }
     }
 
     async addItem(id: number, vector: Float32Array) {
@@ -54,7 +56,7 @@ export class HNSW {
                 while(true) {
                     let didMove = false;
                     await this.traverseNodes(closestNode, this.config.efConstruction, level, (node) => {
-                        const dist = this.getDistance(newNode.vector, newNode.norm, node.vector, node.norm);
+                        const dist = this.getScore(newNode.vector, newNode.norm, node.vector, node.norm);
                         if (dist < closestDistance) {
                             closestNode = node;
                             closestDistance = dist;
@@ -74,7 +76,7 @@ export class HNSW {
             let affectedNodes = new Set<Node>();
             for (let l = newNode.level; l >= 0 ; l--) {
                 const levelM = l == 0 ? this.config.Mmax0 : this.config.Mmax;
-                let candidates = new CandidateNodeList(newNode, this.getDistance, levelM);
+                let candidates = new CandidateNodeList(newNode, this.getScore, levelM);
                 await this.traverseNodes(closestNode, this.config.efConstruction!, l, (node) => {
                     candidates.add(node);
                     return true;
@@ -160,12 +162,12 @@ export class HNSW {
             let closestNode = (await this.nodes.get(this.state.entrypointId))!;
             let level = closestNode.level;
             let closestDistance = Number.MAX_SAFE_INTEGER;
-            let queryNorm = innerProduct(query, query);
+            let queryNorm = dotProduct(query, query);
             do {
                 while (true) {
                     let didMove = false;
                     await this.traverseNodes(closestNode, this.config.efSearch, level, (node) => {
-                        const dist = this.getDistance(query, queryNorm, node.vector, node.norm);
+                        const dist = this.getScore(query, queryNorm, node.vector, node.norm);
                         if (dist < closestDistance) {
                             closestNode = node;
                             closestDistance = dist;
@@ -181,7 +183,7 @@ export class HNSW {
                 level--;
             } while (level >= 0);
 
-            let candidates = new CandidateNodeList(closestNode, this.getDistance, k);
+            let candidates = new CandidateNodeList(closestNode, this.getScore, k);
             await this.traverseNodes(closestNode, this.config.efSearch!, 0, (node) => {
                 candidates.add(node);
                 return true;

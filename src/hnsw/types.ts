@@ -5,8 +5,6 @@ export type HNSWConfig = {
     Mmax0: number,
     efConstruction: number,
     efSearch: number;
-    entryPointId: number[],
-    randomSeed: number,
 }
 
-export type DistanceFunctionType = (a: Float32Array, normA: number | undefined, b: Float32Array, normB: number | undefined) => number;
+export type ScoreFunctionType = (a: Float32Array, normA: number | undefined, b: Float32Array, normB: number | undefined) => number;

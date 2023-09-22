@@ -21,9 +21,7 @@ const Defaults: { config: HNSWConfig, queryK: number } = {
         Mmax: 16,
         Mmax0: 32,
         efConstruction: 200,
-        efSearch: 200,
-        entryPointId: [],
-        randomSeed: 0,
+        efSearch: 200
     },
     queryK: 5,
 }
@@ -40,7 +38,7 @@ export type AddItemsRequest = {
 export type ResultItem = {
     id: number,
     item: ItemType,
-    distance: number,
+    score: number,
 }
 
 export type QueryItemsRequest = {
@@ -129,7 +127,7 @@ export class VectorStoreDurableObject implements DurableObject {
                         vector: [],//item.node.vector,
                         data: undefined
                     },
-                    distance: item.distance,
+                    score: item.score,
                 }
             });
             const response: QueryItemsResponse = {

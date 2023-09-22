@@ -16,7 +16,7 @@ export const Item = {
 export const ResultItem = z.object({
     id: z.number(),
     item: z.object(Item),
-    distance: z.number(),
+    score: z.number(),
 });
 
 export type ResultItemType = z.infer<typeof ResultItem>;

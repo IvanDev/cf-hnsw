@@ -1,2 +1,3 @@
 export type { Storage } from '../hnsw/storage';
-export { DOStorage as DurableObjectStorage } from './durableObjectStorage';
+export { DOStorage } from './durableObjectStorage';
+export { MemoryStorage } from './memoryStorage';

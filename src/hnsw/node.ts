@@ -26,13 +26,13 @@ export class Node {
 
     get norm(): number {
         if (!this._norm) {
-            let dP: number = 0.0;
+            let result: number = 0.0;
             const len = this.vector.length;
             for (let i = 0; i < len; i++) {
                 let val = this.vector[i];
-                dP += val * val;
+                result += val * val;
             }
-            this._norm = Math.sqrt(dP);
+            this._norm = Math.sqrt(result);
         }
         return this._norm;
     }
