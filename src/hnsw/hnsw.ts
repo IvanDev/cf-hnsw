@@ -331,8 +331,8 @@ export class HNSW {
         return this.state;
     }
 
-    async clear(): Promise<void> {
-        await this.nodes.clear();
+    async deleteAll(): Promise<void> {
+        await this.nodes.deleteAll();
     }
 
     async getDimensions(): Promise<number | undefined> {

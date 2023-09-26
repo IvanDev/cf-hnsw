@@ -84,8 +84,14 @@ export class NodeCache {
         }
     }
 
-    async clear(): Promise<void> {
+    async deleteAll(): Promise<void> {
         await this.storage.clear();
+        this.cache.clear();
+        this.cacheUsage.clear();
+        this.itemSize = undefined;
+    }
+
+    async clear(): Promise<void> {
         this.cache.clear();
         this.cacheUsage.clear();
         this.itemSize = undefined;

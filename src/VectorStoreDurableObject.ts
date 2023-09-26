@@ -132,8 +132,8 @@ export class VectorStoreDurableObject implements DurableObject {
             return new Response(JSON.stringify(response), { status: 200 })
         });
 
-        this.router.post('/clear', withContent, async (request) => {
-            this.state.waitUntil(this.clear());
+        this.router.post('/reset', withContent, async (request) => {
+            this.state.waitUntil(this.deleteAll());
             return new Response(JSON.stringify({}), { status: 200 })
         });
 
@@ -180,9 +180,9 @@ export class VectorStoreDurableObject implements DurableObject {
         this.config = config;
         await this.state.storage.put('config', config);
     }
-    async clear() {
+    async deleteAll() {
         await this.state.blockConcurrencyWhile(async () => {
-            await this.hnsw.clear();
+            await this.hnsw.deleteAll();
 
             this.autoincrement = 0;
             await this.state.storage.put('autoincrement', this.autoincrement);

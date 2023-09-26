@@ -8,27 +8,26 @@ import {z} from 'zod'
 import { EnvironmentBindings } from "../types";
 import {QueryItemRequest} from "./query";
 
-export const ClearRequest = z.object({
+export const ResetRequest = z.object({
 
 });
 
-export const ClearResponse = z.object({
+export const ResetResponse = z.object({
 
 });
 
 
-export class ClearRoute extends OpenAPIRoute {
+export class ResetRoute extends OpenAPIRoute {
     static schema = {
-        summary: 'Clear index and reset config',
+        summary: 'Delete all index data and reset config',
         requestBody: {
-            vector: z.array(z.number()),
         },
         responses: {
             '200': {
                 description: 'Recall and other statistics',
                 schema: {
                     metaData: {},
-                    node: ClearResponse
+                    node: ResetResponse
                 },
             },
         },
@@ -45,7 +44,7 @@ export class ClearRoute extends OpenAPIRoute {
         const objectId = env.VECTOR_STORE.idFromName("test");
         const dObj = env.VECTOR_STORE.get(objectId);
 
-        const resp = await dObj.fetch("http://t.com/clear", {
+        const resp = await dObj.fetch("http://t.com/reset", {
             method: "POST",
             body: JSON.stringify(params),
             headers: {
@@ -53,6 +52,6 @@ export class ClearRoute extends OpenAPIRoute {
             },
         });
 
-        return await resp.json<z.infer<typeof ClearRequest>>();
+        return await resp.json<z.infer<typeof ResetRequest>>();
     }
 }
