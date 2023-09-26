@@ -8,6 +8,23 @@ export class MemoryStorage implements Storage {
 
     }
 
+    async listAll<T = unknown>(prefix: string, onItems: (items: Map<string, T>) => Promise<void>): Promise<void> {
+        let items: Map<string, T> = new Map<string, T>();
+        for (const [key, value] of this.storage) {
+            if (!key.startsWith(prefix)) {
+                continue;
+            }
+            items.set(key, value);
+            if (items.size >= 100) {
+                await onItems(items);
+                items = new Map<string, T>();
+            }
+        }
+        if (items.size > 0) {
+            await onItems(items);
+        }
+    }
+
     async get<T = unknown>(key: string): Promise<T | undefined> {
         return this.storage.get(key);
     }

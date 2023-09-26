@@ -13,9 +13,8 @@ export class Node {
     }
 
     static fromJSON(json: any): Node {
-        const node = new Node(json.id, json.vector, json.level, json.neighbors[0].length);
+        const node = new Node(json.id, json.vector, json.level, json.neighbors);
         node._norm = json._norm;
-        node.neighbors = json.neighbors;
         return node;
     }
 
@@ -29,7 +28,7 @@ export class Node {
             let result: number = 0.0;
             const len = this.vector.length;
             for (let i = 0; i < len; i++) {
-                let val = this.vector[i];
+                const val = this.vector[i];
                 result += val * val;
             }
             this._norm = Math.sqrt(result);

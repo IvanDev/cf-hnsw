@@ -57,7 +57,7 @@ export class VectorStoreDurableObject implements DurableObject {
     router = Router();
     hnsw!: HNSW;
     autoincrement = 0;
-    config: HNSWConfig | undefined;
+    config!: HNSWConfig;
     storage: Storage;
 
     constructor(state: DurableObjectState, env: VectorStoreDurableObjectBindings) {
@@ -109,10 +109,6 @@ export class VectorStoreDurableObject implements DurableObject {
             const params: QueryItemsRequest = request.content;
 
             const vector = new Float32Array(params.vector);
-            
-            if (!this.config) {
-                throw new StatusError(400, 'Config not set');
-            }
 
             const dimensions = await this.hnsw.getDimensions() || 0;
             if (dimensions > 0 && dimensions !== vector.length) {
@@ -133,6 +129,11 @@ export class VectorStoreDurableObject implements DurableObject {
             const response: QueryItemsResponse = {
                 items: items,
             }
+            return new Response(JSON.stringify(response), { status: 200 })
+        });
+
+        this.router.get('/recall', async (request) => {
+            const response = await this.hnsw.calcRecall();
             return new Response(JSON.stringify(response), { status: 200 })
         });
     }
@@ -176,6 +177,6 @@ export class VectorStoreDurableObject implements DurableObject {
     }
 
     async fetch(request: any, ...args: any[]) {
-        return this.router.handle(request, ...args) || error(400, 'Bad request to durable object');
+        return await this.router.handle(request, ...args) || error(400, 'Bad request to durable object');
     }
 }
