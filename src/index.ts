@@ -5,6 +5,7 @@ import { QueryItemsRoute } from './routes/query'
 import { VectorStoreDurableObject } from './VectorStoreDurableObject'
 import { RequestLike, error } from "itty-router"
 import {GetStatRoute} from "./routes/recall";
+import {ClearRoute} from "./routes/clear";
 
 const errorHandler = (err: any) => {
   // do something fancy with the error
@@ -21,6 +22,7 @@ const router = OpenAPIRouter()
 router.post('/api/item', AddItemRoute)
 router.post('/api/query', QueryItemsRoute)
 router.get('/api/stat', GetStatRoute);
+router.post('/api/clear', ClearRoute);
 
 // 404 for everything else
 router.all('*', () => new Response('Not Found.', { status: 404 }))

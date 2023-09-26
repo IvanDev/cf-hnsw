@@ -331,6 +331,10 @@ export class HNSW {
         return this.state;
     }
 
+    async clear(): Promise<void> {
+        await this.nodes.clear();
+    }
+
     async getDimensions(): Promise<number | undefined> {
         if (this.state === undefined) {
             await this.loadState();

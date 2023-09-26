@@ -17,9 +17,9 @@ export type VectorStoreDurableObjectBindings = {
 
 const Defaults: { config: HNSWConfig, queryK: number } = {
     config: {
-        M: 16,
-        Mmax: 16,
-        Mmax0: 32,
+        M: 46,
+        Mmax: 60,
+        Mmax0: 46*2,
         efConstruction: 200,
         efSearch: 200
     },
@@ -132,6 +132,11 @@ export class VectorStoreDurableObject implements DurableObject {
             return new Response(JSON.stringify(response), { status: 200 })
         });
 
+        this.router.post('/clear', withContent, async (request) => {
+            this.state.waitUntil(this.clear());
+            return new Response(JSON.stringify({}), { status: 200 })
+        });
+
         this.router.get('/recall', async (request) => {
             const response = await this.hnsw.calcRecall();
             return new Response(JSON.stringify(response), { status: 200 })
@@ -175,7 +180,16 @@ export class VectorStoreDurableObject implements DurableObject {
         this.config = config;
         await this.state.storage.put('config', config);
     }
+    async clear() {
+        await this.state.blockConcurrencyWhile(async () => {
+            await this.hnsw.clear();
 
+            this.autoincrement = 0;
+            await this.state.storage.put('autoincrement', this.autoincrement);
+            this.config = await this.getConfig();
+            this.hnsw = new HNSW(this.config!, this.storage);
+        });
+    }
     async fetch(request: any, ...args: any[]) {
         return await this.router.handle(request, ...args) || error(400, 'Bad request to durable object');
     }

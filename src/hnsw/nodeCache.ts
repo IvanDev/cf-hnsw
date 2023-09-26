@@ -85,6 +85,7 @@ export class NodeCache {
     }
 
     async clear(): Promise<void> {
+        await this.storage.clear();
         this.cache.clear();
         this.cacheUsage.clear();
         this.itemSize = undefined;
