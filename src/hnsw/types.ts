@@ -1,3 +1,4 @@
+import {Node} from "./node";
 
 export type HNSWConfig = {
     M: number,
@@ -7,4 +8,4 @@ export type HNSWConfig = {
     efSearch: number
 }
 
-export type ScoreFunctionType = (a: Float32Array, normA: number | undefined, b: Float32Array, normB: number | undefined) => number;
+export type ScoreFunctionType = (nodeA: Node, nodeB: Node) => number;

@@ -23,7 +23,7 @@ export class CandidateNodeList {
         }
 
         let lastNode = this.items[this.items.length - 1];
-        const dist = this.distanceFunction(node.vector, node.norm, this.targetNode.vector, this.targetNode.norm);
+        const dist = this.distanceFunction(node, this.targetNode);
         if (lastNode === undefined) {
             this.items.push({node, score: dist});
         } else {

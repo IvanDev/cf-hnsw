@@ -10,8 +10,8 @@ export class DOStorage implements Storage {
         return await this.storage.get<T>(key);
     }
 
-    async getMany<T = unknown>(prefix: string): Promise<Map<string, T>> {
-        return await this.storage.list<T>({ prefix: prefix });
+    async getMany<T = unknown>(keys: string[]): Promise<Map<string, T>> {
+        return await this.storage.get<T>(keys);
     }
 
     async listAll<T = unknown>(prefix: string, onItems: (items: Map<string, T>) => Promise<void>): Promise<void> {
@@ -32,7 +32,17 @@ export class DOStorage implements Storage {
         if (typeof keyOrItems === 'string') {
             await this.storage.put<T>(keyOrItems, value!);
         } else {
-            await this.storage.put<T>(keyOrItems);
+            let chunk: Record<string, T> = {};
+            for (const [key, value] of Object.entries(keyOrItems)) {
+                chunk[key] = value;
+                if (Object.keys(chunk).length >= 127) {
+                    await this.storage.put<T>(chunk);
+                    chunk = {};
+                }
+            }
+            if (Object.keys(chunk).length > 0) {
+                await this.storage.put<T>(chunk);
+            }
         }
     }
 

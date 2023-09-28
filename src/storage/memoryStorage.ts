@@ -29,8 +29,12 @@ export class MemoryStorage implements Storage {
         return this.storage.get(key);
     }
 
-    getMany<T = unknown>(prefix: string): Promise<Map<string, T>> {
-        throw new Error("Method not implemented.");
+    getMany<T = unknown>(keys: string[]): Promise<Map<string, T>> {
+        let result = new Map<string, T>();
+        for (const key of keys) {
+            result.set(key, this.storage.get(key));
+        }
+        return Promise.resolve(result);
     }
 
     put<T = unknown>(key: string, value: T): Promise<void>;

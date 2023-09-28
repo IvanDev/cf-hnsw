@@ -15,11 +15,12 @@ function euclideanDistance(a: Float32Array | number[], b: Float32Array | number[
     let sum = 0.0;
     const len = a.length;
     for (let i = 0; i < len; i++) {
-        sum += (a[i] - b[i]) ** 2;
+        const diff = (a[i] - b[i]);
+        sum += diff * diff;
     }
-    return (sum);
+    return sum;
 }
-
+//TODO: refactor getScore to use wasm
 export class HNSW {
     config: HNSWConfig;
     nodes: NodeCache;
@@ -27,24 +28,23 @@ export class HNSW {
     private storage: Storage;
     private state!: HNSWState;
     private getScore!: ScoreFunctionType;
+
     constructor(config: HNSWConfig, storage:Storage) {
         this.config = config;
         this.storage = storage;
         this.nodes = new NodeCache(storage, 'hnsw_node_');
 
         this.config.efConstruction = Math.max(this.config.efConstruction, this.config.M);
-
         this.levelMult = 1.0 / Math.log(1.0 * this.config.M);
-        this.getScore = (a: Float32Array, normA: number | undefined, b: Float32Array, normB: number | undefined) => {
-            // return 1.0 - ( dotProduct(a, b) / ( (normA || Math.sqrt(dotProduct(a, a))) * (normB || Math.sqrt(dotProduct(b, b))) ) );
-            // return dotProduct(a, b);
-            // return euclideanDistance(a, b);
-            const len = a.length;
-            let result = 0.0;
-            for (let i = 0; i < len; i++) {
-                result += (a[i] - b[i]) ** 2;
-            }
-            return result;
+        this.getScore = (nodeA: Node, nodeB: Node) => {
+            return 1.0 - ( dotProduct(nodeA.vector, nodeB.vector) / ( (nodeA.norm || Math.sqrt(dotProduct(nodeA.vector, nodeA.vector))) * (nodeB.norm || Math.sqrt(dotProduct(nodeB.vector, nodeB.vector))) ) );
+            // return euclideanDistance(nodeA.vector, nodeB.vector);
+            // const len = a.length;
+            // let result = 0.0;
+            // for (let i = 0; i < len; i++) {
+            //     result += (a[i] - b[i]) ** 2;
+            // }
+            // return result;
         }
     }
 
@@ -66,7 +66,7 @@ export class HNSW {
         const newNode = new Node(id, vector, newLevel);
 
         if (this.state.entrypointId !== undefined) {
-            let closestNode = (await this.nodes.get(this.state.entrypointId))!;
+            let closestNode = <Node>(await this.nodes.get(this.state.entrypointId))!;
             let level = closestNode.level;
             let closestDistance = Number.MAX_SAFE_INTEGER;
 
@@ -74,15 +74,15 @@ export class HNSW {
                 while(true) {
                     let didMove = false;
                     await this.traverseNodes(closestNode, closestNode.neighbors[level].length + 1, level, (node, visited) => {
-                        const dist = this.getScore(newNode.vector, newNode.norm, node.vector, node.norm);
+                        const dist = this.getScore(newNode, node);
                         if (dist < closestDistance) {
                             closestNode = node;
                             closestDistance = dist;
                             didMove = true;
-                            // return true;
+                            return false;
                         }
                         // return false;
-                        return visited.size <= closestNode.neighbors[level].length + 1
+                        return true;//visited.size <= closestNode.neighbors[level].length + 1
                     });
                     if (!didMove) {
                         break;
@@ -98,7 +98,7 @@ export class HNSW {
                 candidates.add(closestNode);
                 await this.traverseNodes(closestNode, this.config.efConstruction!, l, (node, visited) => {
                     candidates.add(node);
-                    return (visited.size < this.config.efConstruction!);
+                    return true;//(visited.size < this.config.efConstruction!);
                 });
 
                 candidates = await this.filterCandidatesByHeuristic(candidates, levelM);
@@ -165,7 +165,7 @@ export class HNSW {
             let shouldAdd = true;
             for (let j=0; j<result.length; j++) {
                 const resultItem = result[j];
-                const dist = this.getScore(resultItem.node.vector, resultItem.node.norm, item.node.vector, item.node.norm);
+                const dist = this.getScore(resultItem.node, item.node);
                 if (dist < distanceToQuery) {
                     shouldAdd = false;
                     break;
@@ -181,14 +181,15 @@ export class HNSW {
         });
         return resultCandidates;
     }
-    private async traverseNodes(entryNode: Node, ef: number, level: number, onNode: (node:Node, visited:Set<number>)=>Boolean, visited?:Set<number> ): Promise<void> {
+    private async traverseNodes(entryNode: Node, ef: number, level: number, onNode: (node:Node, visited:Map<number, number>)=>Boolean, visited?:Map<number, number> ): Promise<void> {
         if (!visited) {
-            visited = new Set<number>();
+            visited = new Map<number, number>();
         }
 
         if (entryNode.level < level || visited.size > ef) {
             return;
         }
+
         let candidates: number[] = [];
         candidates.push(entryNode.id);
         while (candidates.length > 0) {
@@ -197,16 +198,22 @@ export class HNSW {
                 return;
             }
             if (!visited.has(nodeId)) {
-                visited.add(nodeId);
-                const node = (await this.nodes.get(nodeId))!;
-                for (let i = 0; i < node.neighbors[level].length; i++) {
-                    const neighborId = node.neighbors[level][i];
-                    const neighborNode = (await this.nodes.get(neighborId))!;
-                    if (!visited.has(neighborId)) {
+                visited.set(nodeId, nodeId);
+
+                const node = await this.nodes.get(nodeId);
+                if (!node) {
+                    continue;
+                }
+                const neighbourNodes: Node[] = await this.nodes.getMany(node.neighbors[level]);
+
+                const len = neighbourNodes.length;
+                for (let i = 0; i < len; i++) {
+                    const neighborNode = neighbourNodes[i];
+                    if (!visited.has(neighborNode.id)) {
                         if (!onNode(neighborNode, visited)) {
                             return;
                         }
-                        candidates.push(neighborId);
+                        candidates.push(neighborNode.id);
                     }
                     if (visited.size >= ef) {
                         return;
@@ -214,32 +221,6 @@ export class HNSW {
                 }
             }
         }
-
-        ///
-
-
-        // let result = new Array<Node>();
-        // if (!visited.has(entryNode.id)) {
-        //     visited.add(entryNode.id);
-        //     if (onNode(entryNode, visited)) {
-        //         result.push(entryNode);
-        //     }
-        // }
-        // for (let i = 0; i<entryNode.neighbors[level].length; i++) {
-        //     const neighborId = entryNode.neighbors[level][i];
-        //     if (!visited.has(neighborId)) {
-        //         const neighbor = (await this.nodes.get(neighborId))!;
-        //         visited.add(neighborId);
-        //         if (onNode(neighbor, visited)) {
-        //             result.push(neighbor);
-        //             result = result.concat(await this.traverseNodes(neighbor, ef, level, onNode, visited));
-        //         }
-        //     }
-        //     if (visited.size > ef) {
-        //         break;
-        //     }
-        // }
-
     };
 
     async search(query: Float32Array, k: number): Promise<CandidateItem[]> {
@@ -252,25 +233,28 @@ export class HNSW {
         if (this.state.dimensions !== undefined && query.length !== this.state.dimensions) {
             throw new Error('All vectors must be of the same dimension');
         }
+
         if (this.state.entrypointId !== undefined) {
-            let closestNode = (await this.nodes.get(this.state.entrypointId))!;
+            let closestNode = <Node>(await this.nodes.get(this.state.entrypointId))!;
             let level = closestNode.level;
             const queryNode = new Node(-1, query, 0);
-            let closestDistance = this.getScore(query, queryNode.norm, closestNode.vector, closestNode.norm);
+            let closestDistance = this.getScore(queryNode, closestNode);
 
             while (level > 0) {
                 while (true) {
                     let didMove = false;
-                    await this.traverseNodes(closestNode, closestNode.neighbors[level].length + 1, level, (node, visited) => {
-                        const dist = this.getScore(query, queryNode.norm, node.vector, node.norm);
+                    const maxNodes = closestNode.neighbors[level].length + 1;
+                    await this.traverseNodes(closestNode, maxNodes, level, (node, visited) => {
+                        const dist = this.getScore(queryNode, node);
                         if (dist < closestDistance) {
                             closestNode = node;
                             closestDistance = dist;
                             didMove = true;
+                            return false;
                             // return true;
                         }
                         // return false;
-                        return visited.size <= closestNode.neighbors[level].length;
+                        return true;//visited.size <= maxNodes;
                     });
                     if (!didMove) {
                         break;
@@ -283,7 +267,7 @@ export class HNSW {
             candidates.add(closestNode);
             await this.traverseNodes(closestNode, this.config.efSearch!, 0, (node, visited) => {
                 candidates.add(node);
-                return (visited.size < this.config.efSearch!);
+                return true;//(visited.size < this.config.efSearch!);
             });
             return candidates.items.slice(0, k);
         } else {

@@ -15,7 +15,13 @@ export class NodeCache {
 
     async clearStaleCacheIfNeeded() {
         if (!this.itemSize) {
-            return;
+            if (this.cache.size > 0) {
+                const node = this.cache.values().next().value;
+                this.itemSize = node.getObjectSize();
+            }
+            if (!this.itemSize) {
+                return;
+            }
         }
         const cacheSize = this.cache.size * this.itemSize;
         const overflow = NodeCache.MAX_CACHE_SIZE - cacheSize;
@@ -35,32 +41,42 @@ export class NodeCache {
     }
 
     async get(key: number | undefined): Promise<Node | undefined> {
+        return (await this.getMany(key))[0];
+    }
+    async getMany(key: number | number[] | undefined): Promise<Node[]> {
         if (key === undefined) {
-            return undefined;
+            return [];
         }
-        let cached = this.cache.get(key);
-        let node: Node | undefined = cached;
-        if (!cached) {
-            const val = await this.storage.get<Node>(this.nodeItemPrefix + key.toString());
-            if (val) {
-                node = Node.fromJSON(val);
-            }
-        }
-        this.cacheUsage.set(key, (this.cacheUsage.get(key) || 0) + 1);
+        let keys: number[] = Array.isArray(key)? Array.from(key) : [key!];
+        let result: Map<number, Node> = new Map<number, Node>();
+        let missingKeys: number[] = [];
 
-        if (node) {
-            if (!this.itemSize) {
-                this.itemSize = node.getObjectSize();
-            }
+        while (keys.length > 0) {
+            const key = keys.pop()!;
 
-            if (!cached) {
-                await this.clearStaleCacheIfNeeded();
-                this.cache.set(key, node);
+            let cached = this.cache.get(key);
+            if (cached) {
+                result.set(key, cached);
+                this.cacheUsage.set(key, (this.cacheUsage.get(key) || 0) + 1);
+            } else {
+                missingKeys.push(key);
             }
-            return node;
-        } else {
-            return undefined;
         }
+
+        if (missingKeys.length > 0) {
+            const nodes = await this.storage.getMany<any>(missingKeys.map((key) => this.nodeItemPrefix + key.toString()));
+            for (const [key, value] of nodes) {
+                const node = Node.fromJSON(value);
+                if (!node) {
+                    continue;
+                }
+                result.set(node.id, node);
+                this.cache.set(node.id, node);
+                this.cacheUsage.set(node.id, (this.cacheUsage.get(node.id) || 0) + 1);
+            }
+            await this.clearStaleCacheIfNeeded();
+        }
+        return Array.from(result.values());
     }
 
     async set(value: Node | Node[]): Promise<void> {
